@@ -1,77 +1,44 @@
 from piebedrock.packets.packet import BedrockPacket
 
-# Packet name: Resource Packs Info
-# Packet ID: 0x06 (6)
-# Bound to: Client
-# Fields:
+# Packet ID: 0x06
+# Direction: Server → Client
 #
-#   Forced to accept: Boolean.
-#       If the resource pack requires the client accept it.
+# Sends metadata about available resource/behaviour packs.
+# For a minimal server with no packs, all lists are empty.
 #
-#   Scripting enabled: Boolean.
-#       If scripting is enabled.
-#
-#   BehaviorPackInfos: ResourcePackInfo[].
-#       A list of behaviour packs that the client needs
-#       to download before joining the server. All of these
-#       behaviour packs will be applied together.
-#
-#   ResourcePackInfos: ResourcePackInfo[].
-#       A list of resource packs that the client needs
-#       to download before joining the server. The order
-#       of these resource packs is not relevant in this
-#       packet. It is however important in the Resource Pack
-#       Stack packet.
+# Reference: https://mojang.github.io/bedrock-protocol-docs/html/ResourcePacksInfoPacket.html
 
-# TODO Packet class
 
 class ResourcePacksInfoPacket(BedrockPacket):
     PACKET_ID = 0x06
+    PACKET_TYPE = "resource_packs_info"
 
-    def __init__(self):
-        super().__init__()
-        self.forced_to_accept = False
-        self.scripting_enabled = False
-        self.behavior_pack_infos = []
-        self.resource_pack_infos = []
-
-    def decode_payload(self, payload):
-        self.forced_to_accept = payload.read_bool()
-        self.scripting_enabled = payload.read_bool()
-        
-        behavior_pack_count = payload.read_var_int()
-        self.behavior_pack_infos = [self.decode_pack_info(payload) for _ in range(behavior_pack_count)]
-
-        resource_pack_count = payload.read_var_int()
-        self.resource_pack_infos = [self.decode_pack_info(payload) for _ in range(resource_pack_count)]
+    def __init__(self, data: bytes = b''):
+        super().__init__(data)
+        self.forced_to_accept: bool = False
+        self.has_scripts: bool = False
+        self.behavior_packs: list = []   # list of dicts
+        self.resource_packs: list = []   # list of dicts
 
     def encode_payload(self):
-        payload = self.new_payload()
-        payload.write_bool(self.forced_to_accept)
-        payload.write_bool(self.scripting_enabled)
+        self.write_bool(self.forced_to_accept)
+        self.write_bool(self.has_scripts)
 
-        payload.write_var_int(len(self.behavior_pack_infos))
-        for pack_info in self.behavior_pack_infos:
-            self.encode_pack_info(payload, pack_info)
+        # Behaviour packs (u16 count)
+        self.write_unsigned_short(len(self.behavior_packs))
+        for pack in self.behavior_packs:
+            self._encode_pack(pack)
 
-        payload.write_var_int(len(self.resource_pack_infos))
-        for pack_info in self.resource_pack_infos:
-            self.encode_pack_info(payload, pack_info)
+        # Resource packs (u16 count)
+        self.write_unsigned_short(len(self.resource_packs))
+        for pack in self.resource_packs:
+            self._encode_pack(pack)
 
-        return payload
-
-    def decode_pack_info(self, payload):
-        # Assuming ResourcePackInfo has fields like uuid, version, etc.
-        pack_info = {
-            'uuid': payload.read_string(),
-            'version': payload.read_string(),
-            'size': payload.read_unsigned_long(),
-            # Add more fields as necessary
-        }
-        return pack_info
-
-    def encode_pack_info(self, payload, pack_info):
-        payload.write_string(pack_info['uuid'])
-        payload.write_string(pack_info['version'])
-        payload.write_unsigned_long(pack_info['size'])
-        # Add more fields as necessary
+    def _encode_pack(self, pack: dict):
+        self.write_string(pack.get('uuid', ''))
+        self.write_string(pack.get('version', ''))
+        self.write_unsigned_long(pack.get('size', 0))
+        self.write_string(pack.get('content_key', ''))
+        self.write_string(pack.get('sub_pack_name', ''))
+        self.write_string(pack.get('content_identity', ''))
+        self.write_bool(pack.get('has_scripts', False))
